@@ -14,6 +14,7 @@ import UploadPage from './pages/UploadPage';
 import MediaViewPage from './pages/MediaViewPage';
 import SettingsPage from './pages/SettingsPage';
 import PlaylistsPage from './pages/PlaylistsPage';
+import WatchPartyPage from './pages/WatchPartyPage';
 
 // Admin pages
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -108,6 +109,7 @@ export default function App() {
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/media/:id" element={<MediaViewPage />} />
           <Route path="/playlists" element={<PlaylistsPage />} />
+          <Route path="/party/:code" element={<WatchPartyPage />} />
           <Route path="/settings" element={<SettingsPage />} />
 
           {/* Admin routes */}

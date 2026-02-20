@@ -122,11 +122,51 @@ function initSchema() {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS transcode_jobs (
+      id TEXT PRIMARY KEY,
+      media_id TEXT NOT NULL,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'completed', 'failed')),
+      progress INTEGER DEFAULT 0,
+      qualities TEXT DEFAULT '[]',
+      master_playlist TEXT DEFAULT NULL,
+      error TEXT DEFAULT NULL,
+      started_at TEXT DEFAULT NULL,
+      completed_at TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS watch_rooms (
+      id TEXT PRIMARY KEY,
+      code TEXT UNIQUE NOT NULL,
+      host_id TEXT NOT NULL,
+      media_id TEXT NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      max_viewers INTEGER DEFAULT 50,
+      current_time REAL DEFAULT 0,
+      is_playing INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (host_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS watch_room_members (
+      room_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      joined_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (room_id, user_id),
+      FOREIGN KEY (room_id) REFERENCES watch_rooms(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_media_user ON media(user_id);
     CREATE INDEX IF NOT EXISTS idx_media_status ON media(status);
     CREATE INDEX IF NOT EXISTS idx_comments_media ON comments(media_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
+    CREATE INDEX IF NOT EXISTS idx_transcode_media ON transcode_jobs(media_id);
+    CREATE INDEX IF NOT EXISTS idx_watch_rooms_code ON watch_rooms(code);
+    CREATE INDEX IF NOT EXISTS idx_watch_rooms_host ON watch_rooms(host_id);
   `);
 
   // Seed admin user if none exists

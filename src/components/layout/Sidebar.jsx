@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import {
-  LayoutDashboard, Upload, Film, Image, Music, ListVideo,
+  LayoutDashboard, Upload, Film, Image, Music, ListVideo, Radio,
   Settings, Shield, Users, BarChart3, Flag, ScrollText,
   LogOut, Zap, ChevronLeft, ChevronRight
 } from 'lucide-react';
@@ -16,6 +16,7 @@ export default function Sidebar() {
     { to: '/upload', icon: Upload, label: 'Upload' },
     { to: '/browse', icon: Film, label: 'Browse' },
     { to: '/playlists', icon: ListVideo, label: 'Playlists' },
+    { to: '/browse?type=video', icon: Radio, label: 'Watch Party' },
     { to: '/settings', icon: Settings, label: 'Settings' },
   ];
 

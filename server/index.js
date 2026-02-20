@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import { createServer } from 'http';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -12,9 +13,13 @@ import authRoutes from './routes/auth.js';
 import mediaRoutes from './routes/media.js';
 import adminRoutes from './routes/admin.js';
 import playlistRoutes from './routes/playlists.js';
+import streamRoutes from './routes/stream.js';
+import watchPartyRoutes from './routes/watchparty.js';
+import { initWatchPartySocket } from './services/watchparty.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+const server = createServer(app);
 const PORT = process.env.PORT || 3001;
 
 // ── Security middleware ──
@@ -51,14 +56,22 @@ app.use(cookieParser());
 
 // ── Static files (uploads) ──
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  setHeaders: (res) => {
+  setHeaders: (res, filePath) => {
     res.set('X-Content-Type-Options', 'nosniff');
-    res.set('Content-Security-Policy', "default-src 'none'");
+    // Allow HLS content types
+    if (filePath.endsWith('.m3u8')) {
+      res.set('Content-Type', 'application/vnd.apple.mpegurl');
+    } else if (filePath.endsWith('.ts')) {
+      res.set('Content-Type', 'video/mp2t');
+    }
   },
 }));
 
 // ── Init DB ──
 getDb();
+
+// ── Init WebSocket for Watch Party ──
+const io = initWatchPartySocket(server);
 
 // ── Routes ──
 app.use('/api/auth/login', authLimiter);
@@ -67,6 +80,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/playlists', playlistRoutes);
+app.use('/api/stream', streamRoutes);
+app.use('/api/watchparty', watchPartyRoutes);
 
 // ── Health check ──
 app.get('/api/health', (req, res) => {
@@ -79,7 +94,8 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`\n⚡ PunkStation server ONLINE — port ${PORT}`);
-  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}\n`);
+  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`   WebSocket: ws://localhost:${PORT}/ws/watchparty\n`);
 });

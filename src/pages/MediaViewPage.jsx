@@ -2,32 +2,90 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useMediaStore } from '../store/mediaStore';
 import { useAuthStore } from '../store/authStore';
+import { useWatchPartyStore } from '../store/watchPartyStore';
+import VideoPlayer from '../components/VideoPlayer';
 import {
-  Eye, Heart, MessageSquare, Flag, Trash2, Edit3,
-  Film, Image, Music, ArrowLeft, Send
+  Eye, Heart, MessageSquare, Flag, Trash2,
+  Film, Image, Music, ArrowLeft, Send, Radio, Loader
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import axios from 'axios';
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const SERVER_URL = 'http://localhost:3001';
 
 export default function MediaViewPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { currentItem, fetchOne, toggleLike, addComment, deleteMedia, loading } = useMediaStore();
   const { user } = useAuthStore();
+  const { createRoom } = useWatchPartyStore();
   const [comment, setComment] = useState('');
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [comments, setComments] = useState([]);
   const [reportReason, setReportReason] = useState('');
   const [showReport, setShowReport] = useState(false);
+  const [hlsReady, setHlsReady] = useState(false);
+  const [transcodeStatus, setTranscodeStatus] = useState(null);
+  const [creatingParty, setCreatingParty] = useState(false);
 
   useEffect(() => {
     fetchOne(id).then((data) => {
       if (data) {
         setLikeCount(data.likeCount || 0);
         setComments(data.comments || []);
+
+        // Check HLS status for videos
+        if (data.type === 'video') {
+          checkTranscodeStatus(id);
+        }
       }
     });
   }, [id, fetchOne]);
+
+  const checkTranscodeStatus = async (mediaId) => {
+    try {
+      const { data } = await axios.get(`${API}/stream/${mediaId}/status`);
+      setTranscodeStatus(data);
+      setHlsReady(data.hasHls === true);
+    } catch {
+      setHlsReady(false);
+    }
+  };
+
+  const handleTranscode = async () => {
+    try {
+      await axios.post(`${API}/stream/${id}/transcode`);
+      toast.success('Transcoding started — this may take a few minutes');
+      // Poll for status
+      const interval = setInterval(async () => {
+        const { data } = await axios.get(`${API}/stream/${id}/status`);
+        setTranscodeStatus(data);
+        if (data.status === 'completed' || data.hasHls) {
+          setHlsReady(true);
+          clearInterval(interval);
+          toast.success('HLS streaming ready!');
+        } else if (data.status === 'failed') {
+          clearInterval(interval);
+          toast.error('Transcoding failed');
+        }
+      }, 5000);
+    } catch {
+      toast.error('Failed to start transcoding');
+    }
+  };
+
+  const handleStartWatchParty = async () => {
+    setCreatingParty(true);
+    try {
+      const room = await createRoom(id);
+      navigate(`/party/${room.code}`);
+    } catch {
+      toast.error('Failed to create watch party');
+    }
+    setCreatingParty(false);
+  };
 
   const handleLike = async () => {
     try {
@@ -86,7 +144,6 @@ export default function MediaViewPage() {
   const item = currentItem;
   const isOwner = user?.id === item.user_id;
   const isAdmin = user?.role === 'admin';
-  const SERVER_URL = 'http://localhost:3001';
 
   return (
     <div className="page-media-view">
@@ -96,12 +153,12 @@ export default function MediaViewPage() {
 
       <div className="media-view-layout">
         {/* Player / Preview */}
-        <div className="media-view-player cyber-card">
+        <div className="media-view-player cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
           {item.type === 'video' && (
-            <video
-              controls
-              className="media-view-video"
-              src={`${SERVER_URL}/uploads/${item.filename}`}
+            <VideoPlayer
+              mediaId={item.id}
+              filename={item.filename}
+              hlsReady={hlsReady}
             />
           )}
           {item.type === 'image' && (
@@ -119,6 +176,28 @@ export default function MediaViewPage() {
                 className="media-view-audio"
                 src={`${SERVER_URL}/uploads/${item.filename}`}
               />
+            </div>
+          )}
+
+          {/* Transcode status bar (videos only) */}
+          {item.type === 'video' && !hlsReady && (
+            <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid var(--border)' }}>
+              {transcodeStatus?.status === 'processing' ? (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <span className="font-mono text-yellow" style={{ fontSize: '0.75rem' }}>
+                      TRANSCODING... {transcodeStatus.progress}%
+                    </span>
+                  </div>
+                  <div className="cyber-progress">
+                    <div className="cyber-progress__fill" style={{ width: `${transcodeStatus.progress}%` }} />
+                  </div>
+                </div>
+              ) : (
+                <button className="cyber-btn cyber-btn--filled" onClick={handleTranscode} style={{ width: '100%', justifyContent: 'center', fontSize: '0.75rem' }}>
+                  <Film size={14} /> ENABLE ADAPTIVE STREAMING (HLS)
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -175,6 +254,19 @@ export default function MediaViewPage() {
                 </button>
               )}
             </div>
+
+            {/* Watch Party button (video only) */}
+            {item.type === 'video' && (
+              <button
+                className="cyber-btn cyber-btn--magenta"
+                onClick={handleStartWatchParty}
+                disabled={creatingParty}
+                style={{ width: '100%', justifyContent: 'center', marginTop: '0.75rem' }}
+              >
+                {creatingParty ? <Loader size={14} className="cyber-spinner" /> : <Radio size={14} />}
+                START WATCH PARTY
+              </button>
+            )}
 
             {showReport && (
               <div style={{ marginTop: '1rem' }}>
