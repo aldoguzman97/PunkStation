@@ -32,7 +32,6 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-dropzone": "^15.0.0",
-    "react-helmet-async": "^2.0.5",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.13.0",
     "socket.io": "^4.8.3",
