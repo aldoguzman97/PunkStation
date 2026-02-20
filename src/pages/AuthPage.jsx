@@ -17,11 +17,31 @@ export default function AuthPage() {
     setLoading(true);
     try {
       if (mode === 'login') {
-        const user = await login(form.login, form.password);
+        if (!form.login.trim()) {
+          toast.error('Enter your username or email');
+          return;
+        }
+        if (!form.password) {
+          toast.error('Enter your password');
+          return;
+        }
+        const user = await login(form.login.trim(), form.password);
         toast.success(`Welcome back, ${user.username}`);
         navigate(user.role === 'admin' ? '/admin' : '/dashboard');
       } else {
-        const user = await register(form.username, form.email, form.password);
+        if (!form.username.trim()) {
+          toast.error('Choose a username');
+          return;
+        }
+        if (!form.email.trim()) {
+          toast.error('Enter your email');
+          return;
+        }
+        if (!form.password) {
+          toast.error('Enter a password');
+          return;
+        }
+        const user = await register(form.username.trim(), form.email.trim(), form.password);
         toast.success(`Account created. Welcome, ${user.username}`);
         navigate('/dashboard');
       }
@@ -33,6 +53,11 @@ export default function AuthPage() {
   };
 
   const update = (field) => (e) => setForm({ ...form, [field]: e.target.value });
+
+  const switchMode = (newMode) => {
+    setMode(newMode);
+    useAuthStore.setState({ error: null });
+  };
 
   return (
     <div className="auth-page grid-bg">
@@ -60,14 +85,14 @@ export default function AuthPage() {
         <div className="auth-tabs">
           <button
             className={`auth-tab ${mode === 'login' ? 'auth-tab--active' : ''}`}
-            onClick={() => setMode('login')}
+            onClick={() => switchMode('login')}
           >
             <Shield size={14} />
             AUTHENTICATE
           </button>
           <button
             className={`auth-tab ${mode === 'register' ? 'auth-tab--active' : ''}`}
-            onClick={() => setMode('register')}
+            onClick={() => switchMode('register')}
           >
             <Zap size={14} />
             REGISTER
@@ -137,7 +162,7 @@ export default function AuthPage() {
                 value={form.password}
                 onChange={update('password')}
                 required
-                minLength={8}
+                minLength={mode === 'register' ? 8 : 1}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               />
               <button

@@ -13,29 +13,46 @@ router.post('/register', registerRules, async (req, res) => {
     const { username, email, password } = req.body;
     const db = getDb();
 
-    // Check uniqueness
-    const existing = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
-    if (existing) {
-      return res.status(409).json({ error: 'Username or email already taken' });
+    // Case-insensitive check for existing username
+    const existingUser = db.prepare(
+      'SELECT id FROM users WHERE LOWER(username) = LOWER(?)'
+    ).get(username);
+    if (existingUser) {
+      return res.status(409).json({ error: 'Username is already taken' });
+    }
+
+    // Check for existing email
+    const existingEmail = db.prepare(
+      'SELECT id FROM users WHERE LOWER(email) = LOWER(?)'
+    ).get(email);
+    if (existingEmail) {
+      return res.status(409).json({ error: 'Email is already registered' });
     }
 
     const id = randomUUID();
     const passwordHash = await bcrypt.hash(password, 12);
 
-    db.prepare(`
-      INSERT INTO users (id, username, email, password_hash)
-      VALUES (?, ?, ?, ?)
-    `).run(id, username, email, passwordHash);
+    try {
+      db.prepare(
+        'INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)'
+      ).run(id, username.trim(), email.toLowerCase().trim(), passwordHash);
+    } catch (dbErr) {
+      // Handle race-condition duplicate from UNIQUE constraint
+      if (dbErr.code === 'SQLITE_CONSTRAINT_UNIQUE' || String(dbErr.message).includes('UNIQUE')) {
+        return res.status(409).json({ error: 'Username or email already taken' });
+      }
+      throw dbErr;
+    }
 
     const token = generateToken({ id, role: 'user' });
 
     res.status(201).json({
       token,
-      user: { id, username, email, role: 'user', avatar: null, bio: '' },
+      user: { id, username: username.trim(), email: email.toLowerCase().trim(), role: 'user', avatar: null, bio: '' },
     });
   } catch (err) {
     console.error('[AUTH] Register error:', err);
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ error: 'Server error during registration. Please try again.' });
   }
 });
 
@@ -45,23 +62,24 @@ router.post('/login', loginRules, async (req, res) => {
     const { login, password } = req.body;
     const db = getDb();
 
+    // Case-insensitive lookup by username OR email
     const user = db.prepare(
-      'SELECT id, username, email, password_hash, role, avatar, bio, is_banned FROM users WHERE username = ? OR email = ?'
-    ).get(login, login);
+      'SELECT id, username, email, password_hash, role, avatar, bio, is_banned FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)'
+    ).get(login.trim(), login.trim());
 
     if (!user) {
-      // Constant-time comparison to prevent user enumeration
+      // Constant-time hash to prevent timing-based user enumeration
       await bcrypt.hash(password, 12);
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Invalid username or password' });
     }
 
     if (user.is_banned) {
-      return res.status(403).json({ error: 'Account suspended' });
+      return res.status(403).json({ error: 'Account suspended. Contact an administrator.' });
     }
 
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Invalid username or password' });
     }
 
     const token = generateToken({ id: user.id, role: user.role });
@@ -79,7 +97,7 @@ router.post('/login', loginRules, async (req, res) => {
     });
   } catch (err) {
     console.error('[AUTH] Login error:', err);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Server error during login. Please try again.' });
   }
 });
 
@@ -132,7 +150,7 @@ router.put('/password', authenticate, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: 'Both passwords required' });
+      return res.status(400).json({ error: 'Both current and new passwords are required' });
     }
     if (newPassword.length < 8) {
       return res.status(400).json({ error: 'New password must be at least 8 characters' });
@@ -143,7 +161,7 @@ router.put('/password', authenticate, async (req, res) => {
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
 
     if (!valid) {
-      return res.status(401).json({ error: 'Current password incorrect' });
+      return res.status(401).json({ error: 'Current password is incorrect' });
     }
 
     const hash = await bcrypt.hash(newPassword, 12);

@@ -1,12 +1,13 @@
 import { body, param, validationResult } from 'express-validator';
 
-// Collect errors and return 400
+// Collect errors and return 400 with structured per-field messages
 export function handleValidation(req, res, next) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    const details = errors.array().map(e => ({ field: e.path, message: e.msg }));
     return res.status(400).json({
-      error: 'Validation failed',
-      details: errors.array().map(e => ({ field: e.path, message: e.msg })),
+      error: details[0].message,
+      details,
     });
   }
   next();
@@ -16,24 +17,34 @@ export function handleValidation(req, res, next) {
 export const registerRules = [
   body('username')
     .trim()
+    .notEmpty().withMessage('Username is required')
     .isLength({ min: 3, max: 30 }).withMessage('Username must be 3-30 characters')
-    .matches(/^[a-zA-Z0-9_-]+$/).withMessage('Username may contain letters, numbers, _ and -'),
+    .matches(/^[a-zA-Z0-9_-]+$/).withMessage('Username may only contain letters, numbers, _ and -'),
   body('email')
     .trim()
-    .isEmail().withMessage('Invalid email address')
+    .notEmpty().withMessage('Email is required')
+    .isEmail().withMessage('Please enter a valid email address')
     .normalizeEmail(),
   body('password')
+    .notEmpty().withMessage('Password is required')
     .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
-    .matches(/[A-Z]/).withMessage('Password must include an uppercase letter')
-    .matches(/[a-z]/).withMessage('Password must include a lowercase letter')
-    .matches(/[0-9]/).withMessage('Password must include a number')
-    .matches(/[^A-Za-z0-9]/).withMessage('Password must include a special character'),
+    .custom((value) => {
+      const missing = [];
+      if (!/[A-Z]/.test(value)) missing.push('uppercase letter');
+      if (!/[a-z]/.test(value)) missing.push('lowercase letter');
+      if (!/[0-9]/.test(value)) missing.push('number');
+      if (!/[^A-Za-z0-9]/.test(value)) missing.push('special character');
+      if (missing.length > 0) {
+        throw new Error(`Password needs: ${missing.join(', ')}`);
+      }
+      return true;
+    }),
   handleValidation,
 ];
 
 export const loginRules = [
-  body('login').trim().notEmpty().withMessage('Username or email required'),
-  body('password').notEmpty().withMessage('Password required'),
+  body('login').trim().notEmpty().withMessage('Username or email is required'),
+  body('password').notEmpty().withMessage('Password is required'),
   handleValidation,
 ];
 

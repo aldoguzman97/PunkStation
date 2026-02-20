@@ -10,6 +10,23 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
+// Extract the most useful error message from an axios error
+function extractErrorMessage(err, fallback) {
+  if (!err.response) {
+    return 'Network error — is the server running?';
+  }
+  const data = err.response.data;
+  // Server sends { error: "..." } for most errors
+  if (data?.error && typeof data.error === 'string') {
+    return data.error;
+  }
+  // Validation errors include a details array
+  if (data?.details?.length > 0) {
+    return data.details[0].message;
+  }
+  return fallback;
+}
+
 export const useAuthStore = create((set, get) => ({
   user: null,
   token: localStorage.getItem('punk_token'),
@@ -40,7 +57,7 @@ export const useAuthStore = create((set, get) => ({
       set({ user: data.user, token: data.token, error: null });
       return data.user;
     } catch (err) {
-      const msg = err.response?.data?.error || 'Login failed';
+      const msg = extractErrorMessage(err, 'Login failed');
       set({ error: msg });
       throw new Error(msg);
     }
@@ -54,7 +71,7 @@ export const useAuthStore = create((set, get) => ({
       set({ user: data.user, token: data.token, error: null });
       return data.user;
     } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.details?.[0]?.message || 'Registration failed';
+      const msg = extractErrorMessage(err, 'Registration failed');
       set({ error: msg });
       throw new Error(msg);
     }

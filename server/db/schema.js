@@ -169,16 +169,25 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_watch_rooms_host ON watch_rooms(host_id);
   `);
 
-  // Seed admin user if none exists
-  const adminExists = db.prepare('SELECT id FROM users WHERE role = ?').get('admin');
-  if (!adminExists) {
-    const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'PunkSt@tion2026!';
+  // Seed or reset admin user
+  const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'PunkSt@tion2026!';
+  const adminUser = db.prepare('SELECT id, password_hash FROM users WHERE LOWER(username) = ?').get('admin');
+
+  if (!adminUser) {
+    // No admin exists — create one
     const hash = bcrypt.hashSync(adminPassword, 12);
-    db.prepare(`
-      INSERT INTO users (id, username, email, password_hash, role, bio)
-      VALUES (?, ?, ?, ?, 'admin', 'System Administrator')
-    `).run(randomUUID(), 'admin', 'admin@punkstation.io', hash);
+    db.prepare(
+      "INSERT INTO users (id, username, email, password_hash, role, bio) VALUES (?, ?, ?, ?, 'admin', 'System Administrator')"
+    ).run(randomUUID(), 'admin', 'admin@punkstation.io', hash);
     console.log('[DB] Admin user seeded — username: admin');
+  } else {
+    // Admin exists — ensure password matches the configured one
+    const passwordMatches = bcrypt.compareSync(adminPassword, adminUser.password_hash);
+    if (!passwordMatches) {
+      const hash = bcrypt.hashSync(adminPassword, 12);
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, adminUser.id);
+      console.log('[DB] Admin password reset to configured default');
+    }
   }
 }
 
